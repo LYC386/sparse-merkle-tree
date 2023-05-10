@@ -1,0 +1,10 @@
+[package]
+name = "sparse-merkle-tree"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mimc-sponge-rs = { git = "https://github.com/tzilkha/mimc-sponge-rs" }
+ff_ce = "0.11"
