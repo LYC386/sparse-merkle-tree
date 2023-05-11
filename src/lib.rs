@@ -1,51 +1,37 @@
-use std::thread::panicking;
-
 use ff_ce::{Field, PrimeField};
 use mimc_sponge_rs::{Fr, MimcSponge};
 const DEFAULT_ZERO: &str =
     "21663839004416932945382355908790599225266501822907911457504978515578255421292";
 
 #[derive(Debug)]
-pub struct MerkleTree {
+pub struct MerkleTree<T: PrimeField> {
     pub levels: usize,
     pub capacity: u128,
     pub zero_element: String,
-    pub zeros: Vec<Fr>,
-    pub layers: Vec<Vec<Fr>>,
-    pub hash_fn: fn(Fr, Fr) -> Fr,
+    pub zeros: Vec<T>,
+    pub layers: Vec<Vec<T>>,
+    pub hash_fn: fn(T, T) -> T,
 }
 
-impl MerkleTree {
-    fn default_hash(left: Fr, right: Fr) -> Fr {
-        let arr = vec![left, right];
-        let ms = MimcSponge::default();
-        let k = Fr::zero();
-        let res = ms.multi_hash(&arr, k, 1);
-        return res[0];
-    }
-
+impl<T: PrimeField> MerkleTree<T> {
     fn new(
         levels: usize,
         zero_element: Option<String>,
-        hash_fn: Option<fn(Fr, Fr) -> Fr>,
-        elements: Option<Vec<Fr>>,
-    ) -> MerkleTree {
+        hash_fn: fn(T, T) -> T,
+        elements: Option<Vec<T>>,
+    ) -> MerkleTree<T> {
         let capacity = 2u128.pow(u32::try_from(levels).unwrap());
         let zero_element = match zero_element {
             Some(s) => s, //todo: check sanity
             None => DEFAULT_ZERO.into(),
         };
-        let hash_fn = match hash_fn {
-            Some(f) => f,
-            None => MerkleTree::default_hash,
-        };
-        let mut zeros = Vec::<Fr>::new();
-        let mut layers = Vec::<Vec<Fr>>::new();
-        zeros.push(Fr::from_str(&zero_element).unwrap());
-        layers.push(Vec::<Fr>::new()); //to initiate first layer
+        let mut zeros = Vec::<T>::new();
+        let mut layers = Vec::<Vec<T>>::new();
+        zeros.push(T::from_str(&zero_element).unwrap());
+        layers.push(Vec::<T>::new()); //to initiate first layer
         for i in 1..=levels {
             zeros.push(hash_fn(zeros[i - 1], zeros[i - 1]));
-            layers.push(Vec::<Fr>::new()); //to initiate each layer
+            layers.push(Vec::<T>::new()); //to initiate each layer
         }
         match elements {
             Some(v) => {
@@ -57,13 +43,13 @@ impl MerkleTree {
             None => (),
         }
 
-        let mut mk = MerkleTree {
-            levels: levels,
-            capacity: capacity,
-            zero_element: zero_element,
-            zeros: zeros,
-            layers: layers,
-            hash_fn: hash_fn,
+        let mut mk = MerkleTree::<T> {
+            levels,
+            capacity,
+            zero_element,
+            zeros,
+            layers,
+            hash_fn,
         };
 
         mk.rebuild();
@@ -86,7 +72,7 @@ impl MerkleTree {
         }
     }
 
-    pub fn root(&self) -> Fr {
+    pub fn root(&self) -> T {
         if self.layers[self.levels].len() == 0 {
             self.zeros[self.levels]
         } else {
@@ -94,11 +80,11 @@ impl MerkleTree {
         }
     }
 
-    pub fn path(&self, mut index: u128) -> (Vec<Fr>, Vec<u128>) {
+    pub fn path(&self, mut index: u128) -> (Vec<T>, Vec<u128>) {
         if index >= self.layers[0].len().try_into().unwrap() {
             panic!("Index out of bound");
         }
-        let mut pathElements = Vec::<Fr>::new();
+        let mut pathElements = Vec::<T>::new();
         let mut pathIndices = Vec::<u128>::new();
         for level in 0..self.levels {
             pathIndices.push(index % 2);
@@ -115,7 +101,7 @@ impl MerkleTree {
         (pathElements, pathIndices)
     }
 
-    pub fn update(&mut self, mut index: usize, element: Fr) {
+    pub fn update(&mut self, mut index: usize, element: T) {
         if index >= self.layers[0].len() || index >= self.capacity.try_into().unwrap() {
             panic!("Index out of bound");
         }
@@ -136,15 +122,15 @@ impl MerkleTree {
         }
     }
 
-    pub fn insert(&mut self, element: Fr) {
+    pub fn insert(&mut self, element: T) {
         if u128::try_from(self.layers[0].len()).unwrap() >= self.capacity {
             panic!("Tree is full");
         }
-        self.layers[0].push(Fr::zero());
+        self.layers[0].push(T::zero());
         self.update(self.layers[0].len() - 1, element)
     }
 
-    pub fn bulkInsert(&mut self, elements: Vec<Fr>) {
+    pub fn bulkInsert(&mut self, elements: Vec<T>) {
         if u128::try_from(self.layers[0].len() + elements.len()).unwrap() >= self.capacity {
             panic!("Tree is full");
         }
@@ -169,6 +155,14 @@ impl MerkleTree {
     }
 }
 
+pub fn default_hash(left: Fr, right: Fr) -> Fr {
+    let arr = vec![left, right];
+    let ms = MimcSponge::default();
+    let k = Fr::zero();
+    let res = ms.multi_hash(&arr, k, 1);
+    return res[0];
+}
+
 #[cfg(test)]
 
 mod tests {
@@ -181,40 +175,52 @@ mod tests {
             Fr::from_str("7").unwrap(),
             Fr::from_str("3").unwrap(),
             Fr::from_str("4").unwrap(),
-            Fr::from_str("5").unwrap(),
-            Fr::from_str("6").unwrap(),
-            Fr::from_str("7").unwrap(),
-            Fr::from_str("8").unwrap(),
-            Fr::from_str("9").unwrap(),
-            Fr::from_str("10").unwrap(),
-            Fr::from_str("11").unwrap(),
-            Fr::from_str("12").unwrap(),
-            Fr::from_str("13").unwrap(),
-            Fr::from_str("14").unwrap(),
-            Fr::from_str("15").unwrap(),
-            Fr::from_str("16").unwrap(),
-            Fr::from_str("17").unwrap(),
         ];
-        let mut a = MerkleTree::new(11, None, None, Some(elements));
-        println!("{:?}", a.root());
-        println!("{:?}", a.path(4));
-        a.update(16, Fr::from_str("44").unwrap());
-        println!("{:?}", a.root());
-        println!("{:?}", a.path(16));
-        a.insert(Fr::from_str("100").unwrap());
-        println!("{:?}", a.root());
-        println!("{:?}", a.path(16));
-        a.insert(Fr::from_str("100").unwrap());
-        println!("{:?}", a.root());
-        println!("{:?}", a.path(16));
+        let mt = MerkleTree::new(5, None, default_hash, Some(elements));
+        assert_eq!(
+            mt.root().to_string(),
+            "Fr(0x159e1688baa5baceec83bd06ed6f0dbb1a28c612b1cf1428a4aabb6b9849450e)"
+        );
+        let path_str = format!("{:?}", mt.path(1));
+        assert_eq!(path_str,"([Fr(0x0000000000000000000000000000000000000000000000000000000000000064), Fr(0x1476b92b5dabf861814ddb7c9155087cee756315be19b9ee7b17b161a17bdb66), Fr(0x1151949895e82ab19924de92c40a3d6f7bcb60d92b00504b8199613683f0c200), Fr(0x20121ee811489ff8d61f09fb89e313f14959a0f28bb428a20dba6b0b068b3bdb), Fr(0x0a89ca6ffa14cc462cfedb842c30ed221a50a3d6bf022a6a57dc82ab24c157c9)], [1, 0, 0, 0, 0])")
+    }
 
-        a.bulkInsert(vec![
-            Fr::from_str("18").unwrap(),
-            Fr::from_str("19").unwrap(),
-            Fr::from_str("20").unwrap(),
-            Fr::from_str("21").unwrap(),
+    #[test]
+    pub fn test_update() {
+        let elements = vec![
+            Fr::from_str("5").unwrap(),
+            Fr::from_str("30").unwrap(),
+            Fr::from_str("0").unwrap(),
+            Fr::from_str("513268751230").unwrap(),
+            Fr::from_str("66").unwrap(),
+            Fr::from_str("68421").unwrap(),
+        ];
+        let mut mt = MerkleTree::new(50, None, default_hash, Some(elements));
+        mt.update(2, Fr::from_str("7").unwrap());
+        assert_eq!(
+            mt.root().to_string(),
+            "Fr(0x0db3f83751f8eac45d66b028884ec35e8d03167fec6fbd72b9a71764cc6d2ac8)"
+        );
+    }
+
+    #[test]
+
+    pub fn test_bulk_insert() {
+        let elements = vec![
+            Fr::from_str("6").unwrap(),
+            Fr::from_str("95").unwrap(),
+            Fr::from_str("10").unwrap(),
+        ];
+        let mut mt = MerkleTree::new(33, None, default_hash, Some(elements));
+        mt.bulkInsert(vec![
+            Fr::from_str("45").unwrap(),
+            Fr::from_str("33").unwrap(),
+            Fr::from_str("107").unwrap(),
+            Fr::from_str("537869").unwrap(),
         ]);
-        println!("{:?}", a.path(20));
-        println!("{:?}", a.root());
+        assert_eq!(
+            mt.root().to_string(),
+            "Fr(0x06506991fef3d4e9e095456e8b16b086d17b364151074b2a9d5f6f00fe314983)"
+        );
     }
 }
