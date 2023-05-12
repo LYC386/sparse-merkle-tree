@@ -14,7 +14,7 @@ pub struct MerkleTree<T: PrimeField> {
 }
 
 impl<T: PrimeField> MerkleTree<T> {
-    fn new(
+    pub fn new(
         levels: usize,
         zero_element: Option<String>,
         hash_fn: fn(T, T) -> T,
